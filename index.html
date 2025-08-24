@@ -240,7 +240,7 @@
                 currentUser = user;
                 await fetchUserData();
                 if (userData.isBlocked) {
-                    showAlert("Aapka account block kar diya gaya hai.");
+                    showAlert("তোমার অ্যাকাউন্ট ব্লক করা হয়েছে।");
                     await signOut(auth);
                     loader.style.display = 'none';
                     return;
@@ -326,8 +326,8 @@
         function updateDynamicPaymentFields() {
             const selectedMethod = withdrawMethodSelect.value.toLowerCase();
             let placeholder = "Detail Daalein";
-            if (selectedMethod.includes('upi')) placeholder = "Apni UPI ID Daalein";
-            if (selectedMethod.includes('paytm')) placeholder = "Apna Paytm Number Daalein";
+            if (selectedMethod.includes('upi')) placeholder = "আপনার UPI আইডি লিখুন";
+            if (selectedMethod.includes('paytm')) placeholder = "আপনার Paytm নম্বর লিখুন";
             paymentDetailsContainer.innerHTML = `<input id="payment-detail-input" type="text" placeholder="${placeholder}" class="w-full p-3 rounded-lg input-field">`;
         }
 
@@ -373,7 +373,7 @@
             const name = document.getElementById('signup-name').value;
             const email = document.getElementById('signup-email').value;
             const password = document.getElementById('signup-password').value;
-            if (!name || !email || !password) return showAlert("Kripya sabhi fields bharein.");
+            if (!name || !email || !password) return showAlert("অনুগ্রহ করে সমস্ত ঘর পূরণ করুন।");
             loader.style.display = 'flex';
             try {
                 await createUserWithEmailAndPassword(auth, email, password);
@@ -386,7 +386,7 @@
         async function handleLogin() {
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
-            if (!email || !password) return showAlert("Kripya email aur password daalein.");
+            if (!email || !password) return showAlert(" অনুগ্রহ করে Email Or Password দিন।");
             loader.style.display = 'flex';
             try {
                 await signInWithEmailAndPassword(auth, email, password);
@@ -429,7 +429,7 @@
                 await updateDoc(doc(db, "users", currentUser.uid), { lastNotificationCheck: serverTimestamp() });
             } catch (error) {
                 console.error("Error loading notifications:", error);
-                listEl.innerHTML = '<p class="text-red-400">Notifications load karne mein error aayi.</p>';
+                listEl.innerHTML = '<p class="text-red-400">Notifications load করার সময় একটি ত্রুটি হয়েছে।</p>';
             }
         }
 
@@ -457,16 +457,16 @@
                 });
             } catch (error) {
                 console.error("Error fetching withdrawal history: ", error);
-                historyList.innerHTML = '<p class="text-red-400">History load karne mein error aayi.</p>';
+                historyList.innerHTML = '<p class="text-red-400">History লোড করার সময় একটি ত্রুটি হয়েছে।</p>';
             }
         }
         
         async function handleApplyReferralCode() {
-            if (userData.referredBy) return showAlert("Aap pehle hi ek referral code istemal kar chuke hain.");
+            if (userData.referredBy) return showAlert("আপনি ইতিমধ্যেই একটি রেফারেল কোড ব্যবহার করেছেন।");
             const codeInput = document.getElementById('enter-referral-code');
             const code = codeInput.value.trim().toUpperCase();
-            if (!code) return showAlert("Kripya ek code daalein.");
-            if (code === userData.referralCode) return showAlert("Aap apna khud ka code istemal nahi kar sakte.");
+            if (!code) return showAlert("অনুগ্রহ করে একটি কোড লিখুন।");
+            if (code === userData.referralCode) return showAlert("আপনি নিজের কোড ব্যবহার করতে পারবেন না।");
             loader.style.display = 'flex';
             await applyReferralBonus(code, true);
             codeInput.value = '';
