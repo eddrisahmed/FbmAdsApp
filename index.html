@@ -550,13 +550,13 @@
         }
         
         function shareReferralCode() {
-            const text = `CashReward join karein aur paise kamayein! Bonus paane ke liye mera referral code use karein: ${userData.referralCode}`;
+            const text = `FbmReward এ যুক্ত হন আর টাকা কামাও! 🎁Bonus পাওয়ার জন্য আমার referral code ব্যাবহার করো: ${userData.referralCode}`;
             if (navigator.share) {
-                navigator.share({ title: 'CashReward Join Karein!', text: text, url: window.location.href })
+                navigator.share({ title: 'FbmReward এ যুক্ত হন এবং ফ্রি ইনকাম করুণ!', text: text, url: window.location.href })
                     .catch((error) => console.error("Share failed:", error));
             } else {
                 copyReferralCode();
-                showAlert("Share feature available nahi hai. Iske bajaye referral code copy kar diya gaya hai!");
+                showAlert(" লিংক শেয়ার করার সুবিধা উপলব্ধ না। অনুগ্রহ করে Referral code copy করে শেয়ার করুন!");
             }
         }
 
@@ -571,11 +571,11 @@
             }
 
             if (userData.dailyAdCount >= (appConfig.dailyAdLimit || 10)) {
-                return showAlert("Aapki aaj ki ad dekhne ki seema poori ho gayi hai.");
+                return showAlert("আপনার আজকের Ads দেখা সম্পূর্ণ হয়েছে।");
             }
             
             if (typeof window.show_9549781 !== 'function') {
-                return showAlert("Ad service abhi uplabdh nahi hai. Kripya baad mein prayas karein.");
+                return showAlert("Ad service এখন উপলব্ধ না। অনুগ্রহ করে পরে চেষ্টা করুন।");
             }
             
             let adPromise;
@@ -610,12 +610,12 @@
 
                 if (rewardAmount > 0) {
                     updateBalance(rewardAmount);
-                    showAlert(`Badhai ho! Aapne ${rewardAmount} coins jeete hain.`);
+                    showAlert(`🎉 অভিনন্দন আপনি ${rewardAmount} Coins জিতেছেন।`);
                 }
                 updateAdsLeftCount();
             }).catch(e => {
                 console.error("Ad error:", e);
-                showAlert('Ad nahi dikhaya ja saka. Kripya baad mein prayas karein.');
+                showAlert('দুঃখিত এডস দেখানো সম্ভব না।');
             });
         }
 
