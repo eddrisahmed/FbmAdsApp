@@ -357,6 +357,7 @@
                     
                     <div class="flex space-x-4">
                         <button onclick="closeVideoModal()" class="flex-1 p-3 rounded-lg bg-gray-600 text-white">Cancel</button>
+                        <button id="video-start-btn" class="flex-1 p-3 rounded-lg btn-outline-accent">Start Video</button>
                         <button id="video-complete-btn" class="flex-1 p-3 rounded-lg btn-accent" disabled>Complete</button>
                     </div>
                 </div>
@@ -428,7 +429,6 @@
             let currentUser = null;
             let userData = null;
             let appConfig = {};
-            let taskConfig = {};
             let currentTasks = {};
             let activeTimers = {};
             
@@ -583,10 +583,15 @@
                     
                     currentTasks = {};
                     tasksSnapshot.forEach(doc => {
-                        currentTasks[doc.id] = doc.data();
+                        currentTasks[doc.id] = { id: doc.id, ...doc.data() };
                     });
                     
-                    renderTasks();
+                    // Admin-created tasks থাকলে শুধুমাত্র সেগুলো দেখাবে, নাহলে ডিফল্ট টাস্ক লোড করবে
+                    if (Object.keys(currentTasks).length === 0) {
+                        loadDefaultTasks();
+                    } else {
+                        renderTasks();
+                    }
                 } catch (error) {
                     console.error("Error fetching tasks:", error);
                     loadDefaultTasks();
@@ -596,6 +601,7 @@
             function loadDefaultTasks() {
                 currentTasks = {
                     watch_ads: {
+                        id: "watch_ads",
                         title: "Watch Ads",
                         type: "watch_ads",
                         enabled: true,
@@ -605,32 +611,6 @@
                         timer_seconds: 0,
                         video_seconds: 0,
                         order: 1,
-                        created_at: firebase.firestore.FieldValue.serverTimestamp(),
-                        is_default: true
-                    },
-                    group_join: {
-                        title: "Join Group",
-                        type: "group_join", 
-                        enabled: true,
-                        reward: 100,
-                        global_limit: 500,
-                        current_count: 0,
-                        timer_seconds: 5,
-                        video_seconds: 0,
-                        order: 2,
-                        created_at: firebase.firestore.FieldValue.serverTimestamp(),
-                        is_default: true
-                    },
-                    watch_video: {
-                        title: "Watch Video",
-                        type: "watch_video",
-                        enabled: true,
-                        reward: 80,
-                        global_limit: 800,
-                        current_count: 0,
-                        timer_seconds: 0,
-                        video_seconds: 30,
-                        order: 3,
                         created_at: firebase.firestore.FieldValue.serverTimestamp(),
                         is_default: true
                     }
@@ -655,7 +635,7 @@
                 for (const [taskId, task] of Object.entries(currentTasks)) {
                     if (!task.enabled) continue;
                     
-                    // Check if user has already completed this task (only for non-default tasks)
+                    // Check if user has already completed this task (non-default tasks only)
                     const isCompleted = !task.is_default && userData.completedTasks && userData.completedTasks.includes(taskId);
                     if (isCompleted) continue;
                     
@@ -847,6 +827,7 @@
                 if (!task) return;
                 
                 try {
+                    // Global task count update
                     await db.collection("tasks").doc(taskId).update({
                         current_count: firebase.firestore.FieldValue.increment(1)
                     });
@@ -854,7 +835,7 @@
                     const rewardAmount = task.custom_coins || task.reward;
                     await updateBalance(rewardAmount);
                     
-                    // Mark task as completed for user (only for non-default tasks)
+                    // Mark task as completed for this specific user (non-default tasks only)
                     if (!task.is_default) {
                         await db.collection("users").doc(currentUser.uid).update({
                             completedTasks: firebase.firestore.FieldValue.arrayUnion(taskId),
@@ -875,6 +856,7 @@
                     showAlert(`🎉 You earned ${rewardAmount} coins for joining the group!`);
                     closeGroupJoinModal();
                     
+                    // Re-render tasks to hide the completed one
                     await fetchTaskConfig();
                     
                 } catch (error) {
@@ -895,6 +877,8 @@
                 document.getElementById('video-progress').textContent = '0% Complete';
                 document.getElementById('video-progress-bar').style.width = '0%';
                 document.getElementById('video-complete-btn').disabled = true;
+                document.getElementById('video-start-btn').disabled = false;
+                document.getElementById('video-start-btn').textContent = 'Start Video';
                 
                 const videoPlayer = document.getElementById('video-player');
                 const videoUrl = task.video_url || "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=0";
@@ -908,43 +892,42 @@
                 const progressElement = document.getElementById('video-progress');
                 const progressBar = document.getElementById('video-progress-bar');
                 const completeBtn = document.getElementById('video-complete-btn');
+                const startBtn = document.getElementById('video-start-btn');
                 
                 let isPaused = false;
-                let progressInterval;
+                let progressInterval = null;
+                let isTimerRunning = false;
                 
-                function startProgressTimer() {
-                    progressInterval = setInterval(() => {
-                        if (!isPaused) {
-                            timeWatched++;
-                            const progress = (timeWatched / totalTime) * 100;
-                            
-                            timerElement.textContent = timeWatched + 's';
-                            progressElement.textContent = Math.min(progress, 100).toFixed(0) + '% Complete';
-                            progressBar.style.width = Math.min(progress, 100) + '%';
-                            
-                            if (timeWatched >= totalTime) {
-                                clearInterval(progressInterval);
-                                completeBtn.disabled = false;
+                // Start button functionality
+                startBtn.onclick = function() {
+                    if (!isTimerRunning) {
+                        isTimerRunning = true;
+                        startBtn.disabled = true;
+                        startBtn.textContent = "Playing...";
+                        
+                        // Start progress timer
+                        progressInterval = setInterval(() => {
+                            if (!isPaused) {
+                                timeWatched++;
+                                const progress = (timeWatched / totalTime) * 100;
+                                
+                                timerElement.textContent = timeWatched + 's';
+                                progressElement.textContent = Math.min(progress, 100).toFixed(0) + '% Complete';
+                                progressBar.style.width = Math.min(progress, 100) + '%';
+                                
+                                if (timeWatched >= totalTime) {
+                                    clearInterval(progressInterval);
+                                    completeBtn.disabled = false;
+                                }
                             }
-                        }
-                    }, 1000);
-                }
-                
-                startProgressTimer();
-                
-                // Listen for video pause/play events
-                videoPlayer.addEventListener('pause', () => {
-                    isPaused = true;
-                });
-                
-                videoPlayer.addEventListener('play', () => {
-                    isPaused = false;
-                });
+                        }, 1000);
+                    }
+                };
                 
                 activeTimers.videoWatch = progressInterval;
                 
                 completeBtn.onclick = () => {
-                    clearInterval(activeTimers.videoWatch);
+                    if (progressInterval) clearInterval(progressInterval);
                     completeWatchVideoTask(taskId);
                 };
             }
@@ -964,6 +947,7 @@
                 if (!task) return;
                 
                 try {
+                    // Global task count update
                     await db.collection("tasks").doc(taskId).update({
                         current_count: firebase.firestore.FieldValue.increment(1)
                     });
@@ -971,7 +955,7 @@
                     const rewardAmount = task.custom_coins || task.reward;
                     await updateBalance(rewardAmount);
                     
-                    // Mark task as completed for user (only for non-default tasks)
+                    // Mark task as completed for this specific user (non-default tasks only)
                     if (!task.is_default) {
                         await db.collection("users").doc(currentUser.uid).update({
                             completedTasks: firebase.firestore.FieldValue.arrayUnion(taskId),
@@ -992,6 +976,7 @@
                     showAlert(`🎉 You earned ${rewardAmount} coins for watching the video!`);
                     closeVideoModal();
                     
+                    // Re-render tasks to hide the completed one
                     await fetchTaskConfig();
                     
                 } catch (error) {
@@ -1007,6 +992,7 @@
                 }
                 
                 try {
+                    // Global task count update
                     await db.collection("tasks").doc(taskId).update({
                         current_count: firebase.firestore.FieldValue.increment(1)
                     });
@@ -1014,7 +1000,7 @@
                     const rewardAmount = task.custom_coins || task.reward;
                     await updateBalance(rewardAmount);
                     
-                    // Mark task as completed for user (only for non-default tasks)
+                    // Mark task as completed for this specific user (non-default tasks only)
                     if (!task.is_default) {
                         await db.collection("users").doc(currentUser.uid).update({
                             completedTasks: firebase.firestore.FieldValue.arrayUnion(taskId),
@@ -1034,6 +1020,7 @@
                     
                     showAlert(`🎉 You earned ${rewardAmount} coins for completing the task!`);
                     
+                    // Re-render tasks to hide the completed one
                     await fetchTaskConfig();
                     
                 } catch (error) {
@@ -1099,7 +1086,6 @@
                         showAlert(`🎉 অভিনন্দন আপনি ${rewardAmount} Coins জিতেছেন।`);
                     }
                     
-                    updateAdsLeftCount();
                     updateProfileStats();
                     
                 }).catch(e => {
@@ -1150,7 +1136,6 @@
                 });
                 
                 updateDynamicPaymentFields();
-                updateAdsLeftCount();
                 updateStreakDisplay();
                 updateLevelDisplay();
                 updateReferralStats();
@@ -1199,21 +1184,16 @@
             }
             
             async function updateReferralStats() {
-                const querySnapshot = await db.collection("users")
-                    .where("referredBy", "==", userData.referralCode)
-                    .get();
-                
-                totalReferralsEl.textContent = querySnapshot.size;
-                referralEarningsEl.textContent = querySnapshot.size * 100;
-            }
-            
-            function updateAdsLeftCount() {
-                const today = new Date().toISOString().split('T')[0];
-                if (userData.lastAdWatchDate !== today) {
-                    userData.dailyAdCount = 0;
+                try {
+                    const querySnapshot = await db.collection("users")
+                        .where("referredBy", "==", userData.referralCode)
+                        .get();
+                    
+                    totalReferralsEl.textContent = querySnapshot.size;
+                    referralEarningsEl.textContent = querySnapshot.size * 100;
+                } catch (error) {
+                    console.error("Error fetching referral stats:", error);
                 }
-                const adsLeft = Math.max(0, (appConfig.dailyAdLimit || 10) - userData.dailyAdCount);
-                // adsLeftCountEl.textContent = adsLeft;
             }
             
             function updateDynamicPaymentFields() {
@@ -1302,7 +1282,7 @@
                 }
                 
                 if (password.length < 6) {
-                    return showAlert("পাসওয়ার্ড至少 ৬টি অক্ষর長 হওয়া প্রয়োজন。");
+                    return showAlert("পাসওয়ার্ড至少 ６টি অক্ষর長 হওয়া প্রয়োজন。");
                 }
                 
                 // Show loading state
