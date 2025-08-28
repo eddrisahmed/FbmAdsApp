@@ -120,6 +120,16 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        /* Input validation */
+        .input-error {
+            border-color: #ef4444 !important;
+        }
+        .error-message {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 4px;
+            display: none;
+        }
     </style>
 </head>
 <body class="max-w-md mx-auto">
@@ -215,6 +225,7 @@
                     <input id="withdraw-amount" type="number" placeholder="Coin amount daalein" class="w-full p-3 rounded-lg input-field mb-3">
                     <select id="withdraw-method" class="w-full p-3 rounded-lg input-field mb-3"></select>
                     <div id="payment-details-container"></div>
+                    <div id="payment-error" class="error-message"></div>
                     <button id="withdraw-btn" class="w-full p-3 rounded-lg btn-accent mt-3">Request Withdrawal</button>
                 </div>
                 <div>
@@ -431,6 +442,7 @@
             let appConfig = {};
             let currentTasks = {};
             let activeTimers = {};
+            let notificationInterval = null;
             
             const loader = document.getElementById('loader');
             const coinBalanceEl = document.getElementById('coin-balance');
@@ -443,6 +455,7 @@
             const withdrawMethodSelect = document.getElementById('withdraw-method');
             const notificationDot = document.getElementById('notification-dot');
             const paymentDetailsContainer = document.getElementById('payment-details-container');
+            const paymentErrorEl = document.getElementById('payment-error');
             const streakCounterEl = document.getElementById('streak-counter');
             const streakDaysEl = document.getElementById('streak-days');
             const userLevelEl = document.getElementById('user-level');
@@ -492,6 +505,11 @@
                 } else {
                     currentUser = null;
                     userData = null;
+                    // Stop notification animation if user logs out
+                    if (notificationInterval) {
+                        clearInterval(notificationInterval);
+                        notificationInterval = null;
+                    }
                     showMainPage('auth-section');
                 }
             }
@@ -560,7 +578,7 @@
                     const configDoc = await db.collection("config").doc("main").get();
                     appConfig = configDoc.exists ? configDoc.data() : { 
                         minWithdrawal: 5000, 
-                        paymentMethods: ["UPI", "Paytm"], 
+                        paymentMethods: ["Bkash", "Nagad", "Rocket", "Upay", "Binance", "Payeer"], 
                         dailyAdLimit: 10, 
                         coinValueCoins: 1000, 
                         coinValueInr: 10,
@@ -620,7 +638,7 @@
             
             function renderTasks() {
                 tasksContainerEl.innerHTML = '';
-                tasksLoadingEl.textContent = Object.keys(currentTasks).length + ' tasks available';
+                tasksLoadingEl.textContent = 'Loading tasks...';
                 
                 if (Object.keys(currentTasks).length === 0) {
                     tasksContainerEl.innerHTML = `
@@ -629,8 +647,11 @@
                             <p class="text-sm text-gray-500 mt-2">Please check back later for new tasks.</p>
                         </div>
                     `;
+                    tasksLoadingEl.textContent = '0 tasks available';
                     return;
                 }
+                
+                let availableTasksCount = 0;
                 
                 for (const [taskId, task] of Object.entries(currentTasks)) {
                     if (!task.enabled) continue;
@@ -657,6 +678,18 @@
                     }
                     
                     tasksContainerEl.innerHTML += taskCard;
+                    availableTasksCount++;
+                }
+                
+                tasksLoadingEl.textContent = availableTasksCount + ' tasks available';
+                
+                if (availableTasksCount === 0) {
+                    tasksContainerEl.innerHTML = `
+                        <div class="card-bg p-6 text-center">
+                            <p class="text-gray-400">No tasks available at the moment.</p>
+                            <p class="text-sm text-gray-500 mt-2">Please check back later for new tasks.</p>
+                        </div>
+                    `;
                 }
             }
             
@@ -1199,12 +1232,72 @@
             function updateDynamicPaymentFields() {
                 const selectedMethod = withdrawMethodSelect.value.toLowerCase();
                 let placeholder = "Detail Daalein";
-                if (selectedMethod.includes('upi')) placeholder = "আপনার UPI আইডি লিখুন";
-                if (selectedMethod.includes('paytm')) placeholder = "আপনার Paytm নম্বর লিখুন";
-                if (selectedMethod.includes('bkash')) placeholder = "আপনার Bkash নম্বর লিখুন";
-                if (selectedMethod.includes('nagad')) placeholder = "আপনার Nagad নম্বর লিখুন";
-                if (selectedMethod.includes('rocket')) placeholder = "আপনার Rocket নম্বর লিখুন";
-                paymentDetailsContainer.innerHTML = `<input id="payment-detail-input" type="text" placeholder="${placeholder}" class="w-full p-3 rounded-lg input-field">`;
+                
+                if (selectedMethod.includes('bkash') || selectedMethod.includes('nagad') || 
+                    selectedMethod.includes('rocket') || selectedMethod.includes('upay')) {
+                    placeholder = "আপনার মোবাইল নম্বর লিখুন (01XXXXXXXXX)";
+                } else if (selectedMethod.includes('binance')) {
+                    placeholder = "আপনার Binance ID লিখুন (8-12 digits)";
+                } else if (selectedMethod.includes('payeer')) {
+                    placeholder = "আপনার Payeer ID লিখুন (PXXXXXXXX)";
+                }
+                
+                paymentDetailsContainer.innerHTML = `
+                    <input id="payment-detail-input" type="text" placeholder="${placeholder}" class="w-full p-3 rounded-lg input-field">
+                `;
+                
+                // Add input validation event listener
+                const paymentInput = document.getElementById('payment-detail-input');
+                if (paymentInput) {
+                    paymentInput.addEventListener('input', validatePaymentDetails);
+                }
+            }
+            
+            function validatePaymentDetails() {
+                const method = withdrawMethodSelect.value.toLowerCase();
+                const input = document.getElementById('payment-detail-input');
+                const value = input.value.trim();
+                
+                // Reset error state
+                input.classList.remove('input-error');
+                paymentErrorEl.style.display = 'none';
+                
+                if (!value) return true;
+                
+                let isValid = true;
+                let errorMessage = '';
+                
+                if (method.includes('bkash') || method.includes('nagad') || 
+                    method.includes('rocket') || method.includes('upay')) {
+                    // Validate mobile numbers (01 followed by 9 digits)
+                    const mobileRegex = /^01\d{9}$/;
+                    if (!mobileRegex.test(value)) {
+                        isValid = false;
+                        errorMessage = 'মোবাইল নম্বরটি সঠিক格式ではありません (01XXXXXXXXX)';
+                    }
+                } else if (method.includes('binance')) {
+                    // Validate Binance ID (8-12 digits)
+                    const binanceRegex = /^\d{8,12}$/;
+                    if (!binanceRegex.test(value)) {
+                        isValid = false;
+                        errorMessage = 'Binance ID must be 8-12 digits';
+                    }
+                } else if (method.includes('payeer')) {
+                    // Validate Payeer ID (P followed by 8-12 characters)
+                    const payeerRegex = /^P[a-zA-Z0-9]{7,11}$/;
+                    if (!payeerRegex.test(value)) {
+                        isValid = false;
+                        errorMessage = 'Payeer ID must start with P followed by 7-11 alphanumeric characters';
+                    }
+                }
+                
+                if (!isValid) {
+                    input.classList.add('input-error');
+                    paymentErrorEl.textContent = errorMessage;
+                    paymentErrorEl.style.display = 'block';
+                }
+                
+                return isValid;
             }
             
             function showMainPage(pageId) {
@@ -1226,6 +1319,16 @@
                 if (pageId === 'notifications-page') loadNotifications();
                 if (pageId === 'profile-page') updateProfileStats();
                 if (pageId === 'home-page') renderTasks();
+                
+                // Stop notification animation when user visits notifications page
+                if (pageId === 'notifications-page') {
+                    if (notificationInterval) {
+                        clearInterval(notificationInterval);
+                        notificationInterval = null;
+                    }
+                    notificationBell.classList.remove('ringing');
+                    notificationDot.style.display = 'none';
+                }
             }
             window.navigateTo = navigateTo;
             
@@ -1367,34 +1470,63 @@
             }
             
             async function checkNewNotifications() {
-                const lastCheck = userData.lastNotificationCheck;
-                if (!lastCheck || typeof lastCheck.seconds === 'undefined') {
-                    return;
-                }
+                if (!userData || !userData.lastNotificationCheck) return;
                 
-                const lastCheckTimestamp = new Date(lastCheck.seconds * 1000);
-                
-                const querySnapshot = await db.collection("notifications")
-                    .where("createdAt", ">", lastCheckTimestamp)
-                    .limit(1)
-                    .get();
-                
-                if (!querySnapshot.empty) {
-                    notificationDot.style.display = 'block';
-                    notificationBell.classList.add('ringing');
-                    
-                    try {
-                        await notificationSound.play();
-                    } catch (error) {
-                        console.log("Notification sound play failed:", error);
-                    }
-                    
-                    setTimeout(() => {
-                        notificationBell.classList.remove('ringing');
-                    }, 2000);
+                let lastCheck;
+                if (typeof userData.lastNotificationCheck === 'object' && userData.lastNotificationCheck.seconds) {
+                    lastCheck = new Date(userData.lastNotificationCheck.seconds * 1000);
                 } else {
-                    notificationDot.style.display = 'none';
+                    lastCheck = new Date(userData.lastNotificationCheck);
                 }
+                
+                try {
+                    const querySnapshot = await db.collection("notifications")
+                        .where("createdAt", ">", lastCheck)
+                        .limit(1)
+                        .get();
+                
+                    if (!querySnapshot.empty) {
+                        // Show notification dot
+                        notificationDot.style.display = 'block';
+                        
+                        // Start notification animation with interval
+                        if (!notificationInterval) {
+                            startNotificationAnimation();
+                        }
+                        
+                        try {
+                            await notificationSound.play();
+                        } catch (error) {
+                            console.log("Notification sound play failed:", error);
+                        }
+                    } else {
+                        notificationDot.style.display = 'none';
+                        if (notificationInterval) {
+                            clearInterval(notificationInterval);
+                            notificationInterval = null;
+                        }
+                        notificationBell.classList.remove('ringing');
+                    }
+                } catch (error) {
+                    console.error("Error checking notifications:", error);
+                }
+            }
+            
+            function startNotificationAnimation() {
+                if (notificationInterval) {
+                    clearInterval(notificationInterval);
+                }
+                
+                let isRinging = false;
+                
+                notificationInterval = setInterval(() => {
+                    if (isRinging) {
+                        notificationBell.classList.remove('ringing');
+                    } else {
+                        notificationBell.classList.add('ringing');
+                    }
+                    isRinging = !isRinging;
+                }, 4000); // 4 seconds interval (2 seconds ringing, 2 seconds pause)
             }
             
             async function loadNotifications() {
@@ -1430,6 +1562,10 @@
                     await db.collection("users").doc(currentUser.uid).update({ 
                         lastNotificationCheck: firebase.firestore.FieldValue.serverTimestamp() 
                     });
+                    
+                    // Update user data
+                    userData.lastNotificationCheck = new Date();
+                    
                 } catch (error) {
                     console.error("Error loading notifications:", error);
                     listEl.innerHTML = '<p class="text-red-400">Notifications load করার সময় একটি ত্রুটি হয়েছে।</p>';
@@ -1565,7 +1701,12 @@
                 }
                 
                 if (!paymentDetail) {
-                    return showAlert("Kripya payment detail daalein (UPI ID ya Paytm Number).");
+                    return showAlert("Kripya payment detail daalein.");
+                }
+                
+                // Validate payment details
+                if (!validatePaymentDetails()) {
+                    return showAlert("Please enter valid payment details.");
                 }
                 
                 try {
@@ -1706,6 +1847,10 @@
                     return showAlert("Please enter a valid name.");
                 }
                 
+                if (newName.length < 2) {
+                    return showAlert("Name should be at least 2 characters long.");
+                }
+                
                 try {
                     await db.collection("users").doc(currentUser.uid).update({
                         name: newName
@@ -1717,6 +1862,7 @@
                     showAlert("Name updated successfully!");
                     closeEditNameModal();
                 } catch (error) {
+                    console.error("Error updating name:", error);
                     showAlert("Error updating name: " + error.message);
                 }
             }
